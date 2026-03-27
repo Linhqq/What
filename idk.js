@@ -6,14 +6,14 @@ var VERCEL_HOST = "https://idkbro-theta.vercel.app";
 
 function getManifest() {
     return JSON.stringify({
-        "id": "nguonc_vercel_proxy",
-        "name": "Phim NguonC (Vercel Proxy)",
-        "version": "1.1.0",
+        "id": "nguonc",
+        "name": "Phim NguonC",
+        "version": "1.0.9", // Tăng nhẹ version để app nhận diện cập nhật
         "baseUrl": "https://phim.nguonc.com",
         "iconUrl": "https://stpaulclinic.vn/vaapp/plugins/nguonC.png",
         "isEnabled": true,
         "type": "MOVIE",
-        "playerType": "embed" 
+        "playerType": "embed"
     });
 }
 
@@ -58,29 +58,58 @@ function getUrlList(slug, filtersJson) {
         var page = filters.page || 1;
         var sort = filters.sort || "updated";
 
-        if (slug === 'phim-moi-cap-nhat') {
+        if (slug === 'phim-moi-cap-nhat' && !filters.category && !filters.country && !filters.year) {
             return "https://phim.nguonc.com/api/films/phim-moi-cap-nhat?page=" + page;
         }
-        if (filters.category) return "https://phim.nguonc.com/api/films/the-loai/" + filters.category + "?page=" + page;
-        if (filters.country) return "https://phim.nguonc.com/api/films/quoc-gia/" + filters.country + "?page=" + page;
-        
-        var listSlugs = ['phim-le', 'phim-bo', 'phim-dang-chieu', 'tv-shows'];
-        if (listSlugs.indexOf(slug) >= 0) {
-            return "https://phim.nguonc.com/api/films/danh-sach/" + slug + "?page=" + page;
+
+        if (filters.category) {
+            return "https://phim.nguonc.com/api/films/the-loai/" + filters.category + "?page=" + page + "&sort=" + sort;
         }
-        return "https://phim.nguonc.com/api/films/the-loai/" + slug + "?page=" + page;
+
+        if (filters.country) {
+            return "https://phim.nguonc.com/api/films/quoc-gia/" + filters.country + "?page=" + page + "&sort=" + sort;
+        }
+
+        if (filters.year) {
+            return "https://phim.nguonc.com/api/films/nam-phat-hanh/" + filters.year + "?page=" + page + "&sort=" + sort;
+        }
+
+        if (/^\d{4}$/.test(slug)) {
+            return "https://phim.nguonc.com/api/films/nam-phat-hanh/" + slug + "?page=" + page + "&sort=" + sort;
+        }
+
+        var listSlugs = ['phim-le', 'phim-bo', 'phim-dang-chieu', 'tv-shows', 'subteam'];
+        if (listSlugs.indexOf(slug) >= 0) {
+            if (slug !== 'hoat-hinh') {
+                return "https://phim.nguonc.com/api/films/danh-sach/" + slug + "?page=" + page + "&sort=" + sort;
+            }
+        }
+
+        var countrySlugs = ['au-my', 'anh', 'trung-quoc', 'indonesia', 'viet-nam', 'phap', 'hong-kong', 'han-quoc', 'nhat-ban', 'thai-lan', 'dai-loan', 'nga', 'ha-lan', 'philippines', 'an-do', 'quoc-gia-khac'];
+        if (countrySlugs.indexOf(slug) >= 0) {
+            return "https://phim.nguonc.com/api/films/quoc-gia/" + slug + "?page=" + page + "&sort=" + sort;
+        }
+
+        return "https://phim.nguonc.com/api/films/the-loai/" + slug + "?page=" + page + "&sort=" + sort;
+
     } catch (e) {
         return "https://phim.nguonc.com/api/films/phim-moi-cap-nhat?page=1";
     }
 }
 
-function getUrlSearch(keyword) {
+function getUrlSearch(keyword, filtersJson) {
+    var filters = JSON.parse(filtersJson || "{}");
     return "https://phim.nguonc.com/api/films/search?keyword=" + encodeURIComponent(keyword);
 }
 
 function getUrlDetail(slug) {
+    if (slug.indexOf("http") === 0) return slug;
     return "https://phim.nguonc.com/api/film/" + slug;
 }
+
+function getUrlCategories() { return "https://phim.nguonc.com"; }
+function getUrlCountries() { return "https://phim.nguonc.com"; }
+function getUrlYears() { return "https://phim.nguonc.com"; }
 
 // =============================================================================
 // PARSERS
@@ -89,8 +118,18 @@ function getUrlDetail(slug) {
 function parseListResponse(apiResponseJson) {
     try {
         var response = JSON.parse(apiResponseJson);
-        var items = response.items || (response.data && response.data.items) || [];
-        var paginate = response.paginate || (response.data && response.data.params && response.data.params.pagination) || {};
+        var data = response.data || {};
+        var items = [];
+
+        if (Array.isArray(data)) {
+            items = data;
+        } else if (Array.isArray(response.items)) {
+            items = response.items;
+        } else if (data.items && Array.isArray(data.items)) {
+            items = data.items;
+        }
+
+        var paginate = response.paginate || response.pagination || (data.params && data.params.pagination) || {};
 
         var movies = items.map(function (item) {
             return {
@@ -100,63 +139,117 @@ function parseListResponse(apiResponseJson) {
                 backdropUrl: getImageUrl(item.poster_url),
                 year: item.year || 0,
                 quality: item.quality || "",
-                episode_current: item.current_episode || ""
+                episode_current: item.current_episode || item.episode_current || "",
+                lang: item.language || item.lang || ""
             };
         });
+
+        var currentPage = paginate.current_page || paginate.currentPage || 1;
+        var totalItems = paginate.total_items || paginate.totalItems || 0;
+        var itemsPerPage = paginate.items_per_page || paginate.itemsPerPage || paginate.totalItemsPerPage || 24;
+
+        var totalPages = paginate.total_page || paginate.totalPages || 0;
+        if (totalPages === 0 && itemsPerPage > 0) {
+            totalPages = Math.ceil(totalItems / itemsPerPage);
+        }
+        if (totalPages === 0) totalPages = 1;
 
         return JSON.stringify({
             items: movies,
             pagination: {
-                currentPage: paginate.current_page || 1,
-                totalPages: paginate.total_page || 1
+                currentPage: currentPage,
+                totalPages: totalPages,
+                totalItems: totalItems,
+                itemsPerPage: itemsPerPage
             }
         });
-    } catch (e) { return JSON.stringify({ items: [], pagination: {} }); }
+    } catch (error) {
+        return JSON.stringify({ items: [], pagination: { currentPage: 1, totalPages: 1 } });
+    }
+}
+
+function parseSearchResponse(apiResponseJson) {
+    return parseListResponse(apiResponseJson);
 }
 
 function parseMovieDetail(apiResponseJson) {
     try {
         var response = JSON.parse(apiResponseJson);
-        var movie = response.movie || {};
-        var rawEpisodes = movie.episodes || [];
+        var movie = response.movie || response.data?.item || response.data || {};
+        var rawEpisodes = movie.episodes || response.episodes || response.data?.item?.episodes || [];
 
         var servers = [];
         if (Array.isArray(rawEpisodes)) {
-            rawEpisodes.forEach(function (server, sIdx) {
+            rawEpisodes.forEach(function (server) {
                 var episodes = [];
-                var items = server.items || [];
-                items.forEach(function (ep) {
-                    var linkEmbed = ep.embed || ep.m3u8 || "";
-                    // CHÍNH: Tạo link Proxy trỏ về Vercel của bạn
-                    var proxiedUrl = VERCEL_HOST + "/playlist.m3u8?embed=" + encodeURIComponent(linkEmbed);
-                    
-                    if (linkEmbed) {
-                        episodes.push({
-                            id: proxiedUrl,
-                            name: ep.name || "Tập",
-                            slug: ep.slug || ""
-                        });
-                    }
-                });
+                var serverItems = server.items || server.server_data || [];
+
+                if (Array.isArray(serverItems)) {
+                    serverItems.forEach(function (ep) {
+                        var embed = ep.embed || ep.link_embed || "";
+                        var m3u8 = ep.m3u8 || ep.link_m3u8 || "";
+                        var link = embed || m3u8;
+
+                        if (link) {
+                            // THAY ĐỔI: Gửi link gốc sang Proxy Vercel của bạn
+                            var proxiedUrl = VERCEL_HOST + "/playlist.m3u8?embed=" + encodeURIComponent(link);
+                            episodes.push({
+                                id: proxiedUrl, // Dùng link proxied làm ID để parseDetailResponse xử lý
+                                name: ep.name || ep.episode_name || "",
+                                slug: ep.slug || ep.episode_slug || ""
+                            });
+                        }
+                    });
+                }
+
                 if (episodes.length > 0) {
-                    servers.push({ name: server.server_name || "Server " + (sIdx+1), episodes: episodes });
+                    servers.push({
+                        name: server.server_name || server.name || "Server",
+                        episodes: episodes
+                    });
                 }
             });
         }
 
+        var extractGroup = function (categoryObj, groupName) {
+            if (!categoryObj) return "";
+            for (var key in categoryObj) {
+                var group = categoryObj[key];
+                if (group && group.group && group.group.name === groupName && group.list && group.list.length > 0) {
+                    return group.list.map(function (item) { return item.name; }).join(", ");
+                }
+            }
+            return "";
+        };
+
+        var extractedYear = extractGroup(movie.category, "Năm");
+
         return JSON.stringify({
-            id: movie.slug,
-            title: movie.name,
+            id: movie.slug || "",
+            title: movie.name || "",
             posterUrl: getImageUrl(movie.thumb_url),
-            description: (movie.description || "").replace(/<[^>]*>/g, ""),
-            year: movie.year,
-            servers: servers
+            backdropUrl: getImageUrl(movie.poster_url),
+            description: (movie.description || movie.content || "").replace(/<[^>]*>/g, ""),
+            year: parseInt(movie.year || extractedYear) || 0,
+            rating: parseFloat(movie.view) || 0,
+            quality: movie.quality || "",
+            servers: servers,
+            episode_current: movie.current_episode || movie.episode_current || "",
+            lang: movie.language || movie.lang || "",
+            casts: movie.casts || movie.actor || "",
+            director: movie.director || "",
+            category: extractGroup(movie.category, "Thể loại"),
+            country: extractGroup(movie.category, "Quốc gia"),
+            view: parseInt(movie.view) || 0,
+            status: movie.status || ""
         });
-    } catch (e) { return "{}"; }
+    } catch (error) {
+        return "{}";
+    }
 }
 
+// THAY ĐỔI: Hàm này bây giờ chỉ cần trả về URL đã được chuẩn bị sẵn kèm headers
 function parseDetailResponse(proxiedUrl) {
-    // Trả về URL m3u8 đã qua proxy Vercel kèm Header giả lập Android
     return JSON.stringify({
         url: proxiedUrl,
         headers: {
@@ -166,12 +259,47 @@ function parseDetailResponse(proxiedUrl) {
     });
 }
 
-function getImageUrl(path) {
-    if (!path) return "";
-    return path.indexOf("http") === 0 ? path : "https://img.phimapi.com/" + path;
+function parseCategoriesResponse(apiResponseJson) {
+    var genres = [
+        { name: "Hành Động", slug: "hanh-dong" }, { name: "Phiêu Lưu", slug: "phieu-luu" },
+        { name: "Hoạt Hình", slug: "hoat-hinh" }, { name: "Hài", slug: "phim-hai" },
+        { name: "Hình Sự", slug: "hinh-su" }, { name: "Tài Liệu", slug: "tai-lieu" },
+        { name: "Chính Kịch", slug: "chinh-kich" }, { name: "Gia Đình", slug: "gia-dinh" },
+        { name: "Giả Tưởng", slug: "gia-tuong" }, { name: "Lịch Sử", slug: "lich-su" },
+        { name: "Kinh Dị", slug: "kinh-di" }, { name: "Nhạc", slug: "phim-nhac" },
+        { name: "Bí Ẩn", slug: "bi-an" }, { name: "Lãng Mạn", slug: "lang-man" },
+        { name: "Khoa Học Viễn Tưởng", slug: "khoa-hoc-vien-tuong" }, { name: "Gây Cấn", slug: "gay-can" },
+        { name: "Chiến Tranh", slug: "chien-tranh" }, { name: "Tâm Lý", slug: "tam-ly" },
+        { name: "Tình Cảm", slug: "tinh-cam" }, { name: "Cổ Trang", slug: "co-trang" },
+        { name: "Miền Tây", slug: "mien-tay" }, { name: "Phim 18+", slug: "phim-18" }
+    ];
+    return JSON.stringify(genres);
 }
 
-// Các hàm bổ trợ khác
-function parseSearchResponse(j) { return parseListResponse(j); }
-function parseCategoriesResponse() { return JSON.stringify([{name:"Hành Động",slug:"hanh-dong"},{name:"Cổ Trang",slug:"co-trang"},{name:"Hoạt Hình",slug:"hoat-hinh"}]); }
-function parseCountriesResponse() { return JSON.stringify([{name:"Trung Quốc",value:"trung-quoc"},{name:"Hàn Quốc",value:"han-quoc"}]); }
+function parseCountriesResponse(apiResponseJson) {
+    var countries = [
+        { name: "Âu Mỹ", value: "au-my" }, { name: "Anh", value: "anh" },
+        { name: "Trung Quốc", value: "trung-quoc" }, { name: "Indonesia", value: "indonesia" },
+        { name: "Việt Nam", value: "viet-nam" }, { name: "Pháp", value: "phap" },
+        { name: "Hồng Kông", value: "hong-kong" }, { name: "Hàn Quốc", value: "han-quoc" },
+        { name: "Nhật Bản", value: "nhat-ban" }, { name: "Thái Lan", value: "thai-lan" },
+        { name: "Đài Loan", value: "dai-loan" }, { name: "Nga", value: "nga" },
+        { name: "Hà Lan", value: "ha-lan" }, { name: "Philippines", value: "philippines" },
+        { name: "Ấn Độ", value: "an-do" }, { name: "Quốc gia khác", value: "quoc-gia-khac" }
+    ];
+    return JSON.stringify(countries);
+}
+
+function parseYearsResponse(apiResponseJson) {
+    var years = [];
+    for (var i = 2026; i >= 2004; i--) {
+        years.push({ name: i.toString(), value: i.toString() });
+    }
+    return JSON.stringify(years);
+}
+
+function getImageUrl(path) {
+    if (!path) return "";
+    if (path.indexOf("http") === 0) return path;
+    return "https://img.phimapi.com/" + path;
+}
