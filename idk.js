@@ -1,23 +1,14 @@
-// =============================================================================
-// NGUONC PLUGIN - VERCEL PROXY VERSION
-// =============================================================================
-
 var VERCEL_DOMAIN = "https://idkbro-theta.vercel.app";
 
-/**
- * Hàm lấy URL chi tiết phim: 
- * Thay vì gọi thẳng NguonC, ta gọi qua Vercel để lấy JSON sạch
- */
 function getUrlDetail(slug) {
+    // Trả về URL để Plugin thực hiện GET request
     return VERCEL_DOMAIN + "/phim/" + slug;
 }
 
-/**
- * Hàm phân tích chi tiết phim từ JSON mà Vercel trả về
- */
 function parseMovieDetail(apiResponseJson) {
     try {
-        var data = JSON.parse(apiResponseJson);
+        // apiResponseJson là nội dung nhận được sau khi GET getUrlDetail
+        var data = (typeof apiResponseJson === 'string') ? JSON.parse(apiResponseJson) : apiResponseJson;
         var movie = data.movie || {};
         var rawEpisodes = movie.episodes || [];
 
@@ -25,13 +16,14 @@ function parseMovieDetail(apiResponseJson) {
         rawEpisodes.forEach(function (server, sIdx) {
             var episodes = [];
             (server.items || []).forEach(function (ep) {
-                // TẠO LINK XEM: Trỏ thẳng về API playlist trên Vercel của bạn
-                // Logic này khớp với route /xem/<slug>/<int:server_idx>/<ep_slug>
-                var playUrl = VERCEL_DOMAIN + "/playlist.m3u8?embed=" + encodeURIComponent(ep.embed || ep.m3u8);
+                // Link m3u8 đi qua proxy Vercel của bạn
+                // Lưu ý: Kiểm tra xem field là ep.m3u8 hay ep.link_m3u8
+                var targetLink = ep.m3u8 || ep.embed || ep.link_m3u8;
+                var playUrl = VERCEL_DOMAIN + "/playlist.m3u8?embed=" + encodeURIComponent(targetLink);
                 
                 episodes.push({
-                    id: playUrl,
-                    name: ep.name || "Tập " + ep.slug,
+                    id: playUrl, // Để playUrl vào ID để hàm sau lấy luôn
+                    name: ep.name || "Tập " + (ep.slug || ""),
                     slug: ep.slug
                 });
             });
@@ -44,7 +36,7 @@ function parseMovieDetail(apiResponseJson) {
             }
         });
 
-        return JSON.stringify({
+        return {
             id: movie.slug,
             title: movie.name,
             posterUrl: movie.thumb_url,
@@ -52,24 +44,21 @@ function parseMovieDetail(apiResponseJson) {
             description: (movie.content || "").replace(/<[^>]*>/g, ""),
             year: movie.year || 0,
             servers: servers
-        });
+        };
     } catch (e) {
-        return "{}";
+        return {};
     }
 }
 
 /**
- * Hàm lấy link m3u8 cuối cùng
- * Vì 'id' ở trên đã là link playlist.m3u8 của Vercel, 
- * nên hàm này chỉ cần trả về đúng link đó.
+ * Hàm này thường dùng để lấy link play cuối cùng từ 1 episode id
  */
-function parseDetailResponse(html) {
-    // Trong trường hợp này, 'html' thực chất là link m3u8 đã tạo ở parseMovieDetail
-    return JSON.stringify({
-        url: html, // Link proxy từ Vercel
+function parsePlayUrl(episodeId) {
+    return {
+        url: episodeId, // Vì episodeId ở trên ta đã gán là link Vercel rồi
         headers: {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Referer": "https://phim.nguonc.com/"
+            "Referer": "https://phim.nguonc.com/" 
         }
-    });
+    };
 }
