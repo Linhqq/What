@@ -107,9 +107,9 @@
             "iconUrl": "https://misskon.com/favicon.ico"
         },
         {
-            "id": "idk_plugin",
-            "name": "IDK Custom",
-            "version": "1.0.0",
+            "id": "nguonc_vercel_proxy",
+            "name": "Phim NguonC (Vercel Proxy)",
+            "version": "1.1.0",
             "scriptUrl": "https://raw.githubusercontent.com/Linhqq/What/refs/heads/main/idk.js",
             "iconUrl": "https://raw.githubusercontent.com/youngbi/repo/main/plugins/nguonC.png"
         }
