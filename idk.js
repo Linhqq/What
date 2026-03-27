@@ -6,9 +6,9 @@ var VERCEL_HOST = "https://idkbro-theta.vercel.app";
 
 function getManifest() {
     return JSON.stringify({
-        "id": "nguonc",
-        "name": "Phim NguonC",
-        "version": "1.0.9", // Tăng nhẹ version để app nhận diện cập nhật
+        "id": "nguonc_vercel_proxy",
+        "name": "Phim NguonC (Vercel Proxy)",
+        "version": "1.1.0", // Tăng nhẹ version để app nhận diện cập nhật
         "baseUrl": "https://phim.nguonc.com",
         "iconUrl": "https://stpaulclinic.vn/vaapp/plugins/nguonC.png",
         "isEnabled": true,
